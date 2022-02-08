@@ -1,0 +1,157 @@
+Bootstrap: library
+From: ubuntu:20.04
+Stage: build
+
+%setup
+    mkdir ${SINGULARITY_ROOTFS}/cisTEM 
+
+
+%files
+    #/groups/cryoadmin/software/CISTEM/2.0.0-alpha-6-8cf890c/* /cisTEM/bin
+    /data/himesb/standard_images/yeast/147_Mar12_12.21.27_159_0.mrc /cisTEM/data
+    /data/himesb/standard_images/templates/6q8y_LSU_to_model5_bfactor_30_box_768_pix1.06.mrc /cisTEM/data
+
+
+
+%environment
+
+
+%post
+
+    CISTEM_CUDA_TOOLKIT_VERSION=11.6.0
+    CISTEM_NVIDIA_DRIVER_VERSION=510.39.01
+    CISTEM_WX_WIDGETS_VERSION=3.0.5
+    CISTEM_GCC_VERSION=11
+    
+    echo "export CISTEM_CUDA_TOOLKIT_VERSION=\"${CISTEM_CUDA_TOOLKIT_VERSION}\"" >> $SINGULARITY_ENVIRONMENT
+    echo "export CISTEM_NVIDIA_DRIVER_VERSION=\"${CISTEM_NVIDIA_DRIVER_VERSION}\"" >> $SINGULARITY_ENVIRONMENT
+    echo "export CISTEM_WX_WIDGETS_VERSION=\"${CISTEM_WX_WIDGETS_VERSION}\"" >> $SINGULARITY_ENVIRONMENT
+    echo "export CISTEM_GCC_VERSION=\"${CISTEM_GCC_VERSION}\"" >> $SINGULARITY_ENVIRONMENT
+    
+    N_COMPILE_THREADS=24
+    
+    CUDA_TOOLKIT_NAME=cuda_${CISTEM_CUDA_TOOLKIT_VERSION}_${CISTEM_NVIDIA_DRIVER_VERSION}_linux.run
+    
+    apt update && apt upgrade -y
+    
+    apt list *gtk*
+    
+    apt install -y software-properties-common 
+    add-apt-repository universe
+    add-apt-repository multiverse
+    add-apt-repository restricted
+    add-apt-repository main
+
+    
+    apt update && apt upgrade -y
+
+    apt list *gtk*
+
+    apt list *pkg*
+    
+    apt install -y libgtk-3-dev 
+    apt install -y pkg-config 
+    apt install -y meld 
+    apt install -y finger 
+    apt install -y parallel
+    apt install -y libfftw3-dev
+    apt install -y libtiff-dev
+    apt install -y software-properties-common
+    apt install -y libffi-dev
+    apt install -y libbz2-dev
+    apt install -y libsqlite3-dev
+    apt install -y zlib1g-dev
+    apt install -y libjpeg-dev
+    apt install -y libtiff-dev
+    apt install -y libreadline-dev
+    apt install -y liblzma-dev  
+    apt install -y libssl-dev
+    apt install -y libncursesw5-dev
+    apt install -y wget
+    apt install -y build-essential
+    apt install -y nfs-common
+    apt install -y nfs-kernel-server
+    apt install -y dkms
+    apt install -y curl
+    apt install -y libasound2-dev
+    apt install -y git 
+                       
+    apt-get update && apt-get upgrade -y
+
+    # Get latest GCC toolchain, maybe relink in /usr/bin, but for now just specify g++-11
+    add-apt-repository -y ppa:ubuntu-toolchain-r/test
+    apt install -y g++-${CISTEM_GCC_VERSION} gcc-${CISTEM_GCC_VERSION}
+
+
+    # Get the current cuda toolkit and install to the default system location
+
+    wget https://developer.download.nvidia.com/compute/cuda/${CISTEM_CUDA_TOOLKIT_VERSION}/local_installers/${CUDA_TOOLKIT_NAME}
+    chmod a+x $CUDA_TOOLKIT_NAME
+    ./${CUDA_TOOLKIT_NAME} --silent --toolkit --samples 
+
+    # this is usually ~ 3 Gb so make sure we remove it
+    rm ./${CUDA_TOOLKIT_NAME}
+    
+    # get a more up to date version of git (for ubuntu 18, not needed for 20.04)
+    # add-apt-repository ppa:git-core/ppa -y && apt-get --allow-releaseinfo-change update && apt-get install -y git \
+    # && rm -rf /var/lib/apt/lists/*
+     
+     
+    wget -q https://github.com/wxWidgets/wxWidgets/releases/download/v${CISTEM_WX_WIDGETS_VERSION}/wxWidgets-${CISTEM_WX_WIDGETS_VERSION}.tar.bz2 -O /tmp/wxwidgets.tar.bz2 && \
+    echo 'Installing wxWidgets' && \
+    tar -xf /tmp/wxwidgets.tar.bz2 -C /tmp && \
+    cd /tmp/wxWidgets-${CISTEM_WX_WIDGETS_VERSION}  && \
+    CC=gcc-${CISTEM_GCC_VERSION} CXX=g++-${CISTEM_GCC_VERSION} CXXFLAGS=-fPIC CFLAGS=-fPIC ./configure --disable-precomp-headers --prefix=/usr/local --with-libnotify=no --disable-shared --without-gtkprint \
+    --with-libjpeg=builtin --with-libpng=builtin --with-libtiff=builtin --with-zlib=builtin --with-expat=builtin --disable-compat28 --without-liblzma --without-libjbig --with-gtk=3 --disable-sys-libs && \
+    make -j${N_COMPILE_THREADS} && \
+    make install
+    
+    
+    # TODO:
+    #   Add a defined build directory
+    #   define an ssh key for the container? maybe
+    #   Add a script
+
+
+    NOW=`date`
+    echo "export NOW=\"${NOW}\"" >> $SINGULARITY_ENVIRONMENT
+
+%runscript
+    echo "Container was created $NOW"
+    echo "Arguments received: $*"
+    exec echo "$@"
+
+%startscript
+    nc -lp $LISTEN_PORT
+
+%test
+    grep -q NAME=\"Ubuntu\" /etc/os-release
+    if [ $? -eq 0 ]; then
+        echo "Container base is Ubuntu as expected."
+    else
+        echo "Container base is not Ubuntu."
+        exit 1
+    fi
+
+%labels
+    Author Bah
+    Version v0.0.1
+
+%help
+    This is a demo container used to illustrate a def file that uses all
+    supported sections.
+    
+    To run vscode, you'll need to bind the /run directory and the directory where the binary is. Note: not the softlink in /usr/bin
+    eg./ --bind /run --bind $(dirname $(readlink -f $(which code-insiders)))
+    
+    You need the --nv flag to have access to GPUs
+    
+    singularity shell --nv --bind /run --bind $(dirname $(readlink -f $(which code-insiders))) container.sif
+    
+    Key environmental variables you can access in the container
+    
+      CISTEM_CUDA_TOOLKIT_VERSION=11.6.0
+      CISTEM_NVIDIA_DRIVER_VERSION=510.39.01
+      CISTEM_WX_WIDGETS_VERSION=3.0.5
+      CISTEM_GCC_VERSION=11
+    
